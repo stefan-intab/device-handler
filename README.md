@@ -39,13 +39,15 @@ API_LOGIN_PATH=/auth/token/
 API_INTERNAL_DEVICES_PATH=/devices/internal/
 API_INTERNAL_UPDATED_PATH=/devices/internal/updated/
 API_OUTDATED_PROPERTIES_PATH=/devices/internal/properties/outdated/
+NATS_URL=nats://127.0.0.1:4222
 API_REQUEST_TIMEOUT=10s
 API_JWT_LEEWAY=30s
 API_FALLBACK_TOKEN_TTL=10m
 SYNC_POLL_INTERVAL=15s
-PUBLISH_SUBJECT=channel.data.device-handler
+PUBLISH_SUBJECT=channels.data.device-handler
 PUBLISH_FLUSH_AFTER=1s
 PUBLISH_FLUSH_COUNT=50
+PUBLISH_TIMEOUT=5s
 LOG_LEVEL=INFO
 ```
 
@@ -82,6 +84,6 @@ python3 scripts/simulate_comet_uxxxxm.py --count 0 --interval 15 --jitter 0.3
 
 ## Notes
 
-- The publisher currently logs batch contents and is intentionally isolated behind an interface so we can swap in real protobuf encoding and NATS JetStream publish next.
+- The publisher now uses NATS JetStream and sends the payload as protobuf using the `telemetry.v1.Batch` schema.
 - Channel-to-`channel_id` resolution depends on `channels[].tag` being available from the device metadata API. For `comet/UxxxxM`, the payload `Quantity` such as `Temperature` is normalized to lowercase and matched against the channel `tag`.
 - The `secret` query parameter is currently logged for traceability because validation is not implemented yet.

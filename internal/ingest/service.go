@@ -57,10 +57,26 @@ func (s *Service) Handle(ctx context.Context, req device.Request) (device.Respon
 		return device.Response{}, fmt.Errorf("parse device payload: %w", err)
 	}
 
+	s.logger.Debug("parsed device payload",
+		"manufacturer", req.Manufacturer,
+		"model", req.Model,
+		"serial", parsed.Serial,
+		"cache_key", cache.DebugKey(req.Manufacturer, req.Model, parsed.Serial),
+		"channel_count", len(parsed.ChannelMeasurements),
+	)
+
 	// The cache is our source of truth for mapping a physical device upload to
 	// internal IDs like deployment_id and channel_id.
 	record, ok := s.cache.Lookup(req.Manufacturer, req.Model, parsed.Serial)
 	if !ok {
+		s.logger.Debug("device cache lookup missed before refresh",
+			"manufacturer", req.Manufacturer,
+			"model", req.Model,
+			"serial", parsed.Serial,
+			"cache_key", cache.DebugKey(req.Manufacturer, req.Model, parsed.Serial),
+			"serial_matches", summarizeDeviceRecords(s.cache.FindBySerial(parsed.Serial)),
+			"manufacturer_serial_matches", summarizeDeviceRecords(s.cache.FindByManufacturerAndSerial(req.Manufacturer, parsed.Serial)),
+		)
 		var err error
 		record, ok, err = s.refreshAndLookupDevice(ctx, req.Manufacturer, req.Model, parsed.Serial)
 		if err != nil {
@@ -109,25 +125,71 @@ func (s *Service) refreshAndLookupDevice(ctx context.Context, manufacturer, mode
 		"manufacturer", manufacturer,
 		"model", model,
 		"serial", serial,
+		"cache_key", cache.DebugKey(manufacturer, model, serial),
+		"updated_since", s.cache.UpdatedAt().UTC().Format(time.RFC3339),
 	)
 
 	updatedDevices, err := s.resolver.FetchUpdatedDevices(ctx, s.cache.UpdatedAt())
 	if err != nil {
 		return cache.DeviceRecord{}, false, fmt.Errorf("refresh updated devices after cache miss: %w", err)
 	}
+	s.logger.Debug("updated devices fetched for cache miss",
+		"manufacturer", manufacturer,
+		"model", model,
+		"serial", serial,
+		"records", summarizeDeviceRecords(updatedDevices),
+	)
 	if len(updatedDevices) > 0 {
 		s.cache.UpsertMany(updatedDevices)
 	}
 	if record, ok := s.cache.Lookup(manufacturer, model, serial); ok {
+		s.logger.Debug("device found after updated-device refresh",
+			"manufacturer", manufacturer,
+			"model", model,
+			"serial", serial,
+			"deployment_id", record.DeploymentID,
+			"device_id", record.DeviceID,
+		)
 		return record, true, nil
 	}
+	if record, ok := s.lookupByManufacturerAndSerialFallback(manufacturer, model, serial); ok {
+		return record, true, nil
+	}
+	s.logger.Debug("device still missing after updated-device refresh",
+		"manufacturer", manufacturer,
+		"model", model,
+		"serial", serial,
+		"serial_matches", summarizeDeviceRecords(s.cache.FindBySerial(serial)),
+		"manufacturer_serial_matches", summarizeDeviceRecords(s.cache.FindByManufacturerAndSerial(manufacturer, serial)),
+	)
 
 	allDevices, err := s.resolver.FetchDevices(ctx)
 	if err != nil {
 		return cache.DeviceRecord{}, false, fmt.Errorf("refresh full device cache after cache miss: %w", err)
 	}
+	s.logger.Debug("full device list fetched for cache miss",
+		"manufacturer", manufacturer,
+		"model", model,
+		"serial", serial,
+		"count", len(allDevices),
+		"serial_matches", summarizeDeviceRecords(filterBySerial(allDevices, serial)),
+		"manufacturer_serial_matches", summarizeDeviceRecords(filterByManufacturerAndSerial(allDevices, manufacturer, serial)),
+	)
 	s.cache.UpsertMany(allDevices)
 	record, ok := s.cache.Lookup(manufacturer, model, serial)
+	if !ok {
+		record, ok = s.lookupByManufacturerAndSerialFallback(manufacturer, model, serial)
+	}
+	if !ok {
+		s.logger.Debug("device still missing after full refresh",
+			"manufacturer", manufacturer,
+			"model", model,
+			"serial", serial,
+			"cache_key", cache.DebugKey(manufacturer, model, serial),
+			"serial_matches", summarizeDeviceRecords(s.cache.FindBySerial(serial)),
+			"manufacturer_serial_matches", summarizeDeviceRecords(s.cache.FindByManufacturerAndSerial(manufacturer, serial)),
+		)
+	}
 	return record, ok, nil
 }
 
@@ -152,7 +214,7 @@ func (s *Service) ensureChannels(ctx context.Context, req device.Request, record
 			return cache.DeviceRecord{}, fmt.Errorf("create channel for deployment %d tag %q: %w", record.DeploymentID, channelTag, err)
 		}
 
-		updatedRecord, ok := s.cache.UpsertChannelMapping(req.Manufacturer, req.Model, parsed.Serial, mapping)
+		updatedRecord, ok := s.cache.UpsertChannelMapping(record.Manufacturer, record.Model, parsed.Serial, mapping)
 		if !ok {
 			return cache.DeviceRecord{}, fmt.Errorf("update cache with new channel mapping for serial %s", parsed.Serial)
 		}
@@ -184,4 +246,63 @@ func normalizeUnit(raw string) string {
 	default:
 		return strings.TrimSpace(raw)
 	}
+}
+
+func filterBySerial(records []cache.DeviceRecord, serial string) []cache.DeviceRecord {
+	normalizedSerial := strings.TrimSpace(serial)
+	var matches []cache.DeviceRecord
+	for _, record := range records {
+		if strings.TrimSpace(record.Serial) == normalizedSerial {
+			matches = append(matches, record)
+		}
+	}
+	return matches
+}
+
+func filterByManufacturerAndSerial(records []cache.DeviceRecord, manufacturer, serial string) []cache.DeviceRecord {
+	normalizedManufacturer := strings.ToLower(strings.TrimSpace(manufacturer))
+	normalizedSerial := strings.TrimSpace(serial)
+	var matches []cache.DeviceRecord
+	for _, record := range records {
+		if strings.ToLower(strings.TrimSpace(record.Manufacturer)) == normalizedManufacturer &&
+			strings.TrimSpace(record.Serial) == normalizedSerial {
+			matches = append(matches, record)
+		}
+	}
+	return matches
+}
+
+func summarizeDeviceRecords(records []cache.DeviceRecord) []string {
+	summaries := make([]string, 0, len(records))
+	for _, record := range records {
+		summaries = append(summaries, fmt.Sprintf(
+			"serial=%s manufacturer=%s model=%s deployment_id=%d device_id=%d channels=%d",
+			record.Serial,
+			record.Manufacturer,
+			record.Model,
+			record.DeploymentID,
+			record.DeviceID,
+			len(record.ChannelMappings),
+		))
+	}
+	return summaries
+}
+
+func (s *Service) lookupByManufacturerAndSerialFallback(manufacturer, requestedModel, serial string) (cache.DeviceRecord, bool) {
+	matches := s.cache.FindByManufacturerAndSerial(manufacturer, serial)
+	if len(matches) != 1 {
+		return cache.DeviceRecord{}, false
+	}
+
+	record := matches[0]
+	s.logger.Warn("device matched by manufacturer+serial fallback",
+		"requested_manufacturer", manufacturer,
+		"requested_model", requestedModel,
+		"serial", serial,
+		"matched_manufacturer", record.Manufacturer,
+		"matched_model", record.Model,
+		"deployment_id", record.DeploymentID,
+		"device_id", record.DeviceID,
+	)
+	return record, true
 }

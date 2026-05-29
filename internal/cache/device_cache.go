@@ -105,6 +105,40 @@ func key(manufacturer, model, serial string) string {
 		strings.TrimSpace(serial)
 }
 
+func DebugKey(manufacturer, model, serial string) string {
+	return key(manufacturer, model, serial)
+}
+
+func (c *DeviceCache) FindBySerial(serial string) []DeviceRecord {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	normalizedSerial := strings.TrimSpace(serial)
+	var matches []DeviceRecord
+	for _, record := range c.byKey {
+		if strings.TrimSpace(record.Serial) == normalizedSerial {
+			matches = append(matches, record)
+		}
+	}
+	return matches
+}
+
+func (c *DeviceCache) FindByManufacturerAndSerial(manufacturer, serial string) []DeviceRecord {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	normalizedManufacturer := strings.ToLower(strings.TrimSpace(manufacturer))
+	normalizedSerial := strings.TrimSpace(serial)
+	var matches []DeviceRecord
+	for _, record := range c.byKey {
+		if strings.ToLower(strings.TrimSpace(record.Manufacturer)) == normalizedManufacturer &&
+			strings.TrimSpace(record.Serial) == normalizedSerial {
+			matches = append(matches, record)
+		}
+	}
+	return matches
+}
+
 type DeviceUpdate struct {
 	DeviceID     uint64          `json:"device_id"`
 	DeploymentID uint64          `json:"id"`

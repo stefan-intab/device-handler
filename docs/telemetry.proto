@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+option go_package = "go-nats-publisher/gen/telemetry/v1;telemetryv1";
+package telemetry.v1;
+
+enum BatteryType {
+  BATTERY_TYPE_UNSPECIFIED = 0;
+  BATTERY_TYPE_VOLTAGE = 1;
+  BATTERY_TYPE_PERCENT = 2;
+}
+
+enum SignalType {
+  SIGNAL_TYPE_UNSPECIFIED = 0;
+  SIGNAL_TYPE_WIRELESS_VALUE_2G = 1;
+  SIGNAL_TYPE_WIRELESS_VALUE_4G = 2;
+  SIGNAL_TYPE_WIRELESS_VALUE_868 = 3;
+  SIGNAL_TYPE_COMET_2G = 4;
+  SIGNAL_TYPE_COMET_4G = 5;
+  SIGNAL_TYPE_NB_IOT = 6;
+  SIGNAL_TYPE_CAT_LTE = 7;
+}
+
+message BatterySeries {
+  BatteryType battery_type = 1;
+  repeated float values = 2 [packed=true]; // values aligned with dt
+}
+
+message SignalSeries {
+  SignalType signal_type = 1;
+  repeated float values = 2 [packed=true];  // values aligned with dt
+}
+
+message ChannelSeries {
+  uint64 channel_id = 1;
+  repeated float values = 2 [packed=true];    // values aligned with dt
+}
+
+// One deployed device payload with multiple samples and one shared time axis.
+message DeploymentSamples {
+  uint64 deployment_id = 1;
+  optional uint64 device_id = 2;
+  optional uint64 gateway_deployment_id = 3;
+  uint64 t0 = 4;
+  repeated uint32 dt = 5 [packed=true];  // shared time axis
+
+  repeated ChannelSeries channel_series = 6;
+  repeated BatterySeries battery_series = 7;
+  repeated SignalSeries signal_series = 8;
+}
+
+// Batch of deployment sample payloads.
+message Batch {
+  bytes transmission_id = 1;  // uuid or ULID
+  optional uint64 source_deployment_id = 2;
+  repeated DeploymentSamples deployment_samples = 3;
+}

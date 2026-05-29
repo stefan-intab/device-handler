@@ -50,6 +50,7 @@ func main() {
 		"api_outdated_properties_path", cfg.API.OutdatedPropertiesPath,
 		"api_username", cfg.API.Username,
 		"sync_poll_interval", cfg.Sync.PollInterval.String(),
+		"nats_url", cfg.Publish.NATSURL,
 		"publish_subject", cfg.Publish.Subject,
 		"log_level", cfg.LogLevel.String(),
 	)
@@ -68,7 +69,12 @@ func main() {
 		registry.Register(cometsoaptx.New(model))
 	}
 
-	basePublisher := publish.NewLogPublisher(logger)
+	basePublisher, err := publish.NewJetStreamPublisher(cfg.Publish, cfg.API.ServiceName, logger)
+	if err != nil {
+		logger.Error("connect jetstream publisher", "error", err)
+		os.Exit(1)
+	}
+	defer basePublisher.Close()
 	bufferedPublisher := publish.NewBufferedPublisher(basePublisher, cfg.Publish, logger)
 	bufferedPublisher.Start(ctx)
 
