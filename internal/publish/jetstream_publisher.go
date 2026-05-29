@@ -70,7 +70,7 @@ func (p *JetStreamPublisher) Publish(ctx context.Context, subject string, batch 
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
 	msg.Header.Set("Content-Type", "application/x-protobuf")
-	msg.Header.Set("X-Schema", "proto.telemetry.v1")
+	msg.Header.Set("X-Proto-Schema", "telemetry.v1.Batch")
 	msg.Header.Set("X-Ingest-Source", "device-handler")
 	msg.Header.Set("X-Transmission-Id", hex.EncodeToString(batch.TransmissionID))
 
@@ -99,5 +99,25 @@ func (p *JetStreamPublisher) Close() {
 	if p.nc != nil && !p.nc.IsClosed() {
 		p.nc.Drain()
 		p.nc.Close()
+	}
+}
+
+func (p *JetStreamPublisher) ReadyStatus() (bool, string) {
+	if p.nc == nil {
+		return false, "nats connection not initialized"
+	}
+
+	switch p.nc.Status() {
+	case nats.CONNECTED:
+		return true, ""
+	case nats.RECONNECTING:
+		return false, "nats reconnecting"
+	case nats.CLOSED:
+		return false, "nats connection closed"
+	default:
+		if err := p.nc.LastError(); err != nil {
+			return false, err.Error()
+		}
+		return false, p.nc.Status().String()
 	}
 }

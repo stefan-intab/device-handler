@@ -21,6 +21,8 @@ const (
 	defaultPublishFlushCount      = 50
 	defaultPublishSubject         = "channel.data.device-handler"
 	defaultPublishTimeout         = 5 * time.Second
+	defaultPublishRetryBackoff    = 5 * time.Second
+	defaultPublishMaxRetries      = 5
 	defaultInternalDevicesPath    = "/devices/internal/"
 	defaultInternalUpdatedPath    = "/devices/internal/updated/"
 	defaultOutdatedPropertiesPath = "/devices/internal/properties/outdated/"
@@ -66,11 +68,13 @@ type SyncConfig struct {
 }
 
 type PublishConfig struct {
-	NATSURL    string
-	Subject    string
-	FlushAfter time.Duration
-	FlushCount int
-	Timeout    time.Duration
+	NATSURL      string
+	Subject      string
+	FlushAfter   time.Duration
+	FlushCount   int
+	Timeout      time.Duration
+	RetryBackoff time.Duration
+	MaxRetries   int
 }
 
 func Load() (Config, error) {
@@ -103,11 +107,13 @@ func Load() (Config, error) {
 			PollInterval: mustDuration("SYNC_POLL_INTERVAL", defaultPollInterval),
 		},
 		Publish: PublishConfig{
-			NATSURL:    getenv("NATS_URL", defaultNATSURL),
-			Subject:    getenv("PUBLISH_SUBJECT", defaultPublishSubject),
-			FlushAfter: mustDuration("PUBLISH_FLUSH_AFTER", defaultPublishFlushAfter),
-			FlushCount: mustInt("PUBLISH_FLUSH_COUNT", defaultPublishFlushCount),
-			Timeout:    mustDuration("PUBLISH_TIMEOUT", defaultPublishTimeout),
+			NATSURL:      getenv("NATS_URL", defaultNATSURL),
+			Subject:      getenv("PUBLISH_SUBJECT", defaultPublishSubject),
+			FlushAfter:   mustDuration("PUBLISH_FLUSH_AFTER", defaultPublishFlushAfter),
+			FlushCount:   mustInt("PUBLISH_FLUSH_COUNT", defaultPublishFlushCount),
+			Timeout:      mustDuration("PUBLISH_TIMEOUT", defaultPublishTimeout),
+			RetryBackoff: mustDuration("PUBLISH_RETRY_BACKOFF", defaultPublishRetryBackoff),
+			MaxRetries:   mustInt("PUBLISH_MAX_RETRIES", defaultPublishMaxRetries),
 		},
 		LogLevel: level,
 	}

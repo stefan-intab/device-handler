@@ -17,6 +17,7 @@ import (
 	cometulogger "device-handler/internal/device/comet/ulogger"
 	cometwebsensor "device-handler/internal/device/comet/websensor"
 	"device-handler/internal/ingest"
+	"device-handler/internal/metrics"
 	"device-handler/internal/publish"
 )
 
@@ -35,10 +36,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	appMetrics := metrics.NewAppMetrics()
 	apiClient := api.NewJWTClient(cfg.API, logger)
 	deviceCache := cache.NewDeviceCache()
 	updateStore := cache.NewDeviceUpdateStore()
-	syncer := cache.NewSyncer(apiClient, deviceCache, updateStore, cfg.Sync, logger)
+	syncer := cache.NewSyncer(apiClient, deviceCache, updateStore, cfg.Sync, appMetrics, logger)
 
 	logger.Debug("loaded runtime config",
 		"http_address", cfg.HTTP.Address,
@@ -52,6 +54,8 @@ func main() {
 		"sync_poll_interval", cfg.Sync.PollInterval.String(),
 		"nats_url", cfg.Publish.NATSURL,
 		"publish_subject", cfg.Publish.Subject,
+		"publish_retry_backoff", cfg.Publish.RetryBackoff.String(),
+		"publish_max_retries", cfg.Publish.MaxRetries,
 		"log_level", cfg.LogLevel.String(),
 	)
 
@@ -75,11 +79,22 @@ func main() {
 		os.Exit(1)
 	}
 	defer basePublisher.Close()
-	bufferedPublisher := publish.NewBufferedPublisher(basePublisher, cfg.Publish, logger)
+	bufferedPublisher := publish.NewBufferedPublisher(basePublisher, cfg.Publish, appMetrics, logger)
 	bufferedPublisher.Start(ctx)
 
-	service := ingest.NewService(registry, deviceCache, apiClient, apiClient, bufferedPublisher, logger)
-	server := ingest.NewHTTPServer(cfg.HTTP, service, logger)
+	service := ingest.NewService(registry, deviceCache, apiClient, apiClient, bufferedPublisher, appMetrics, logger)
+	server := ingest.NewHTTPServer(cfg.HTTP, service, func() (bool, []string) {
+		var reasons []string
+
+		if ready, reason := syncer.ReadyStatus(); !ready {
+			reasons = append(reasons, "cache/api: "+reason)
+		}
+		if ready, reason := basePublisher.ReadyStatus(); !ready {
+			reasons = append(reasons, "nats: "+reason)
+		}
+
+		return len(reasons) == 0, reasons
+	}, appMetrics.Registry, logger)
 
 	go syncer.Start(ctx)
 	go func() {

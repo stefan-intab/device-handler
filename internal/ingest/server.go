@@ -11,22 +11,31 @@ import (
 
 	"device-handler/internal/config"
 	"device-handler/internal/device"
+	"device-handler/internal/metrics"
 )
 
 type HTTPServer struct {
 	server  *http.Server
 	service *Service
 	logger  *slog.Logger
+	readyFn func() (bool, []string)
+	metrics *metrics.Registry
 }
 
-func NewHTTPServer(cfg config.HTTPConfig, service *Service, logger *slog.Logger) *HTTPServer {
+func NewHTTPServer(cfg config.HTTPConfig, service *Service, readyFn func() (bool, []string), metricsRegistry *metrics.Registry, logger *slog.Logger) *HTTPServer {
 	s := &HTTPServer{
 		service: service,
 		logger:  logger,
+		readyFn: readyFn,
+		metrics: metricsRegistry,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/readyz", s.handleReady)
+	if s.metrics != nil {
+		mux.Handle("/metrics", s.metrics.Handler())
+	}
 	// Devices post to a single endpoint and identify their parser through query
 	// parameters, which keeps the HTTP surface small even as device support grows.
 	mux.HandleFunc("/devices", s.handleDevices)
@@ -52,6 +61,28 @@ func (s *HTTPServer) Shutdown(ctx context.Context) error {
 func (s *HTTPServer) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
+}
+
+func (s *HTTPServer) handleReady(w http.ResponseWriter, _ *http.Request) {
+	if s.readyFn == nil {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+		return
+	}
+
+	ready, reasons := s.readyFn()
+	if ready {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+		return
+	}
+
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if len(reasons) == 0 {
+		_, _ = w.Write([]byte("not ready"))
+		return
+	}
+	_, _ = w.Write([]byte(strings.Join(reasons, "; ")))
 }
 
 func (s *HTTPServer) handleDevices(w http.ResponseWriter, r *http.Request) {

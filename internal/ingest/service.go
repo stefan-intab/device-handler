@@ -10,6 +10,7 @@ import (
 	"device-handler/internal/api"
 	"device-handler/internal/cache"
 	"device-handler/internal/device"
+	"device-handler/internal/metrics"
 	"device-handler/internal/publish"
 )
 
@@ -28,25 +29,29 @@ type Service struct {
 	resolver       deviceResolver
 	channelCreator channelCreator
 	publisher      publish.EnqueuePublisher
+	metrics        *metrics.AppMetrics
 	logger         *slog.Logger
 }
 
-func NewService(registry *device.Registry, cache *cache.DeviceCache, resolver deviceResolver, channelCreator channelCreator, publisher publish.EnqueuePublisher, logger *slog.Logger) *Service {
+func NewService(registry *device.Registry, cache *cache.DeviceCache, resolver deviceResolver, channelCreator channelCreator, publisher publish.EnqueuePublisher, appMetrics *metrics.AppMetrics, logger *slog.Logger) *Service {
 	return &Service{
 		registry:       registry,
 		cache:          cache,
 		resolver:       resolver,
 		channelCreator: channelCreator,
 		publisher:      publisher,
+		metrics:        appMetrics,
 		logger:         logger,
 	}
 }
 
 func (s *Service) Handle(ctx context.Context, req device.Request) (device.Response, error) {
+	s.metrics.IngestRequests.Inc()
 	// Parser selection is entirely driven by the URL parameters so new device
 	// types can be added by registering one more parser implementation.
 	parser, ok := s.registry.Lookup(req.Manufacturer, req.Model)
 	if !ok {
+		s.metrics.IngestUnsupportedDevices.Inc()
 		return device.Response{}, device.ErrUnsupportedDevice
 	}
 
@@ -54,6 +59,7 @@ func (s *Service) Handle(ctx context.Context, req device.Request) (device.Respon
 	// internal representation with serial, timestamp, and channel values.
 	parsed, err := parser.Parse(ctx, req)
 	if err != nil {
+		s.metrics.IngestParseFailures.Inc()
 		return device.Response{}, fmt.Errorf("parse device payload: %w", err)
 	}
 
@@ -69,6 +75,7 @@ func (s *Service) Handle(ctx context.Context, req device.Request) (device.Respon
 	// internal IDs like deployment_id and channel_id.
 	record, ok := s.cache.Lookup(req.Manufacturer, req.Model, parsed.Serial)
 	if !ok {
+		s.metrics.IngestCacheMisses.Inc()
 		s.logger.Debug("device cache lookup missed before refresh",
 			"manufacturer", req.Manufacturer,
 			"model", req.Model,
@@ -83,6 +90,7 @@ func (s *Service) Handle(ctx context.Context, req device.Request) (device.Respon
 			return device.Response{}, err
 		}
 		if !ok {
+			s.metrics.IngestDeviceNotFound.Inc()
 			return device.Response{}, fmt.Errorf("%w for serial %s", device.ErrDeviceNotFound, parsed.Serial)
 		}
 	}
@@ -113,9 +121,10 @@ func (s *Service) Handle(ctx context.Context, req device.Request) (device.Respon
 		"manufacturer", req.Manufacturer,
 		"model", req.Model,
 		"serial", parsed.Serial,
-		"secret", req.Secret,
+		"secret_present", req.Secret != "",
 		"channel_count", len(parsed.ChannelMeasurements),
 	)
+	s.metrics.IngestSuccess.Inc()
 
 	return parsed.Response, nil
 }
@@ -211,8 +220,10 @@ func (s *Service) ensureChannels(ctx context.Context, req device.Request, record
 		}
 		mapping, err := s.channelCreator.CreateDeploymentChannel(ctx, record.DeploymentID, createReq)
 		if err != nil {
+			s.metrics.ChannelCreateFailures.Inc()
 			return cache.DeviceRecord{}, fmt.Errorf("create channel for deployment %d tag %q: %w", record.DeploymentID, channelTag, err)
 		}
+		s.metrics.ChannelCreateSuccess.Inc()
 
 		updatedRecord, ok := s.cache.UpsertChannelMapping(record.Manufacturer, record.Model, parsed.Serial, mapping)
 		if !ok {

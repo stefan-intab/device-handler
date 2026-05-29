@@ -48,6 +48,8 @@ PUBLISH_SUBJECT=channels.data.device-handler
 PUBLISH_FLUSH_AFTER=1s
 PUBLISH_FLUSH_COUNT=50
 PUBLISH_TIMEOUT=5s
+PUBLISH_RETRY_BACKOFF=5s
+PUBLISH_MAX_RETRIES=5
 LOG_LEVEL=INFO
 ```
 
@@ -55,6 +57,14 @@ LOG_LEVEL=INFO
 
 ```bash
 go run ./cmd/device-handler
+```
+
+Health endpoints:
+
+```text
+GET /healthz  -> process is alive
+GET /readyz   -> initial cache sync completed, cache not stale, and NATS is connected
+GET /metrics  -> Prometheus-style metrics
 ```
 
 ## Example Request
@@ -85,5 +95,7 @@ python3 scripts/simulate_comet_uxxxxm.py --count 0 --interval 15 --jitter 0.3
 ## Notes
 
 - The publisher now uses NATS JetStream and sends the payload as protobuf using the `telemetry.v1.Batch` schema.
+- If a JetStream publish fails, the batch is retried in memory with exponential backoff and a bounded retry count before items are dropped.
+- `/metrics` exposes counters and gauges for ingest requests, cache sync health, channel auto-creation, publish retries/failures, and publish queue depth.
 - Channel-to-`channel_id` resolution depends on `channels[].tag` being available from the device metadata API. For `comet/UxxxxM`, the payload `Quantity` such as `Temperature` is normalized to lowercase and matched against the channel `tag`.
-- The `secret` query parameter is currently logged for traceability because validation is not implemented yet.
+- The `secret` query parameter is accepted and passed to parsers, but its raw value is no longer emitted in normal request logs.
