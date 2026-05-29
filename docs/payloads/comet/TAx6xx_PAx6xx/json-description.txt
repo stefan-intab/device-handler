@@ -1,0 +1,308 @@
+-----------------------------------------------------------------------------------------------------------------------
+
+ Description of HTTP(s) POST for TAx6xx and PAx6xx Web Sensors
+
+ v1.0 for firmware 11-0-0-0 or higher
+
+-----------------------------------------------------------------------------------------------------------------------
+
+1.  History of changes
+
+    |-----------------------|--------------------|--------------------------------------------------------------------|
+    | Date                  | Version            | Description of changes                                             |
+    |                       |                    |                                                                    |
+    |-----------------------|--------------------|--------------------------------------------------------------------|
+    | 2026-03-11            | v1.0               | Initial revision of the document                                   |
+    |-----------------------|--------------------|--------------------------------------------------------------------|
+
+
+2.  JSON message structure and parameters
+
+2.1 Description
+
+    Measured values are sent to the server via HTTP(s) POST requests with JSON payloads. The structure of the JSON 
+    message is described in Chapter 2.2. Each message must be acknowledged by the server with an HTTP 200 response.
+    If a message is not acknowledged by the server, it is not marked as successfully sent. If the memory (cache) 
+    feature is enabled, the message is stored and resent during the next connection attempt. Messages stored in the
+    memory (cache) are sent first. The memory (cache) capacity is 2688 messages, and it is cleared after the device 
+    configuration is changed.
+
+    The device uses HTTP/1.1 transfer. This allows multiple POST requests (multiple JSON messages) to be sent over 
+    a single TCP (TLS) connection. If the server is not capable of properly handling this behavior, the memory (cache)
+    feature must be deactivated.
+
+    The device supports both HTTP and HTTPs for JSON message transmission. If client-side authentication is required, 
+    it can be performed using the COMET root certificate, or user certificates can be uploaded using Vision software.
+
+
+2.2 JSON message structure
+
+    {
+       "JsonType": ...,
+       "JsonVersion": ...,
+       "OrderId": ...,
+       "MsgType": ...,
+       "MsgCache": ...,
+       "Sn": ...,
+       "Desc": ...,
+       "Kind": ...,
+       "AState": { 
+         "Reg": ..., 
+         "Mask": ...
+       },
+       "NConf": ...,
+       "ConfID": ...,
+       "Interval": ...,
+       "Time": {
+         "Now": ...,
+         "Sample": ...,
+         "IsValid": ...
+       },
+       "LocalIP": ...,
+       "Channels": [
+         {
+           "Nr": ...,
+           "En": ...,
+           "Quant": ...,
+           "Val": ...,
+           "ValStr": ...,
+           "Unit": ...,
+           "Dec": ...,
+           "Type": [ Static, Dynamic ],
+           "Alarm": [ Al1, Al2 ],
+           "AlarmMode": [ AlMode1, AlMode2 ],
+           "BinDesc": [ "BinDescOn", "BinDescOff" ]    // only for PA8652 
+         },
+         ...
+         ...
+       ]
+    }
+
+
+2.3 Message parameters
+
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Parameter            | Type   | Range      | Description                                                        |
+    |                      |        |            |                                                                    |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | JsonType             | INT    |            | Type of the JSON message. For TAx6xx/PAx6xx Web Sensors, it is 5.  |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | JsonVersion          | INT    |            | Version of the JSON message. Currently set to 1.                   |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | OrderId              | INT    | 0 - 32bit  | Message sequence number since device restart.                      |
+    |                      |        | unsigned   | The first message is set to 0.                                     |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | MsgType              | INT    | 0 - 2,     | Message type:                                                      |
+    |                      |        | 4 - 5      |   0 = first message after restart                                  |
+    |                      |        |            |   1 = synchronous message (sent at a set interval)                 |
+    |                      |        |            |   2 = asynchronous message (e.g., sent on alarm)                   |
+    |                      |        |            |   4 = test message                                                 |
+    |                      |        |            |   5 = test message initialized from web                            |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | MsgCache             | INT    | 0 - 7,     | Reason code, in conjunction with JSON cache/non-volatile memory:   |
+    |                      |        | 9 - 10     |   0  = direct message (without using cache)                        |
+    |                      |        |            |   1  = sent from cache (NO_NET)                                    |
+    |                      |        |            |   2  = sent from cache (DNS_ERR)                                   |
+    |                      |        |            |   3  = sent from cache (SOCK_ERR)                                  |
+    |                      |        |            |   4  = sent from cache (SSL_ERR)                                   |
+    |                      |        |            |   5  = sent from cache (BIND_ERR)                                  |
+    |                      |        |            |   6  = sent from cache (CONNECTION_ERR)                            |
+    |                      |        |            |   7  = sent from cache (TLS_ERR)                                   |
+    |                      |        |            |   9  = sent from cache (TRANSFER_ERR)                              |
+    |                      |        |            |   10 = sent from cache (WRONG_HTTP_CODE)                           |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Sn                   | STR    | 8B len     | Serial number of the device (e.g., 20286614)                       |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Desc                 | STR    | 64B len    | Device name in UTF-8                                               |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Kind                 | INT    | 1   - 12,  | Device type identifier:                                            |
+    |                      |        | 128 - 131  |  |-----|--------|------------|-------------------------------------|
+    |                      |        |            |  | 1   | TA3610 | T+RH       | T+RH internal sensors               |
+    |                      |        |            |  | 2   | TA3611 | T+RH,CO2   | 1x DigiE external probe             |
+    |                      |        |            |  | 3   | TA7610 | T+RH+P     | T+RH+P internal sensors             |
+    |                      |        |            |  | 4   | TA4611 | T          | 1x Pt1000 temperature probe         |
+    |                      |        |            |  | 5   | TA0610 | T          | T internal sensor                   |
+    |                      |        |            |  | 6   |   --   | n/a        | n/a                                 |
+    |                      |        |            |  | 7   | TA7611 | T+RH+P     | 1x Digi ext. probe + P int. sensor  |
+    |                      |        |            |  | 8   | TA5640 | CO2+P      | T+CO2 internal sensors              |
+    |                      |        |            |  | 9   | TA4621 | T          | 2x Pt1000 temperature probe         |
+    |                      |        |            |  | 10  | TA3621 | T+RH,CO2   | 2x DigiE external probe             |
+    |                      |        |            |  | 11  | TA3645 | T,T+RH,CO2 | 1x DigiE probe + 2x Pt1000 probe    |
+    |                      |        |            |  | 12  | TA7640 | T+RH+CO2+P | T+RH+P+CO2 internal sensors         |
+    |                      |        |            |  | 128 | PA8652 | T,T+RH,BIN | 2x DS probe, 3x BIN input           |
+    |                      |        |            |  | 129 | PA8611 | T,T+RH     | 1x DS probe                         |
+    |                      |        |            |  | 130 | PA8641 | T,T+RH     | 4x DS probe                         |
+    |                      |        |            |  | 131 | PA8610 | T          | T internal sensor                   |
+    |----------------------|--------|------------|--|-----|--------|------------|-------------------------------------|
+    | AState               |        |            | AState status register. See Chapter 6 for additional details.      |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Reg               | INT    | 0 - 65535  | Value of the AState register at the time the request was created.  |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Mask              | INT    | 0 - 65535  | Mask of active bits in the AState register.                        |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | NConf                | INT    | 0 - 255    | Configuration number                                               |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | ConfID               | STR    | 16B len    | Configuration unique ID (X-YYYYYYYY-ZZ-RR)                         |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Interval             | INT    | 10 - 65535 | Sending interval in (seconds)                                      |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Time                 |        |            | Date and time                                                      |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Now               | STR    | RFC3339    | Time when the message was transmitted to the server.               |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Sample            | STR    | RFC3339    | Time when the message was sampled (it can be older than Now due to |
+    |  |                   |        |            | sending message from cache/memory).                                |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-IsValid           | INT    | 0, 1       | Indication whether the time is valid (1 = RTC time is valid).      |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | LocalIP              | STR    | 64B len    | IPv4 address of the device in the local network.                   |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+    | Channels             |        |            | Measured values at channels. If a channel is not available         |
+    |  |                   |        |            | on the device, the channel is not shown.                           |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Nr                | INT    | 1 - 8      | Channel number                                                     |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-En                | INT    | 0, 1       | Channel is enabled in the device settings (1 = enabled).           |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Quant             | STR    | 32B len    | Name of the channel in UTF-8.                                      |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Val               | STR    | 8B len     | Measured value in floating-point format transmitted as HEX         |
+    |  |                   |        |            | characters (FF8100NN = error number NN).                           |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-ValStr            | STR    | 32B len    | Measured value represented as a string (e.g., 12.8, n/a, ErrorX).  |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Unit              | STR    | 16B len    | Channel unit encoded in UTF-8.                                     |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Dec               | INT    | 0 - 10     | Number of decimal digits.                                          |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Type              |        |            | Information about the type of the channel.                         |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-Static         | INT    | 0 - 255    | Static identification of the channel.                              |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-Dynamic        | INT    | 0 - 255    | Identification of channel from probe detection.                    |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-Alarm             |        |            | Indicates the alarm state (1 = alarm)                              |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-Al1            | INT    | 0, 1       | State of Alarm 1 for the channel                                   |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-Al2            | INT    | 0, 1       | State of Alarm 2 for the channel                                   |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-AlarmMode         |        |            | Alarm mode for the channel:                                        |
+    |  |  |                |        |            |   0 = alarm disabled                                               |
+    |  |  |                |        |            |   1 = lower than limit                                             |
+    |  |  |                |        |            |   2 = higher than limit                                            |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-AlMode1        | INT    | 0 - 2      | Mode of the Alarm 1.                                               |
+    |  |  |                |--------|------------|--------------------------------------------------------------------|
+    |  |  |-AlMode2        | INT    | 0 - 2      | Mode of the Alarm 2.                                               |
+    |  |                   |--------|------------|--------------------------------------------------------------------|
+    |  |-BinDesc           |        |            | Binary input state description. Available only for binary          |
+    |     |                |        |            | channels on PA8652.                                                |
+    |     |                |--------|------------|--------------------------------------------------------------------|
+    |     |-BinDescOn      | STR    | 32B len    | On-state description (closed, voltage, flooded).                   |
+    |     |                |--------|------------|--------------------------------------------------------------------|
+    |     |-BinDescOff     | STR    | 32B len    | Off-state description (open, low voltage, dry).                    |
+    |----------------------|--------|------------|--------------------------------------------------------------------|
+
+
+3.  Troubleshooting
+
+    If you experience issues where the device repeatedly sends the same JSON message, ensure that each message is 
+    confirmed by an HTTP 200 response from the server. If memory (cache) is used, ensure that the HTTP server supports 
+    HTTP version 1.1.
+    
+    Status codes for test Cloud messages:    
+
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | Erorr code                    | Description                                                                     |
+    |                               |                                                                                 |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_NET_NO              | Unable to send the test message due to a LAN network issue.                     |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_DNS_ERR             | DNS resolution failed. This may be caused by an incorrect Cloud server address, |
+    |                               | improper DNS configuration, or a DNS server issue.                              |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_SOCK_ERR            | Internal error: unable to create a socket.                                      |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_SSL_ERR             | Internal error: unable to create a TLS socket. This may be caused by improperly |
+    |                               | configured user certificates required for the Cloud protocol.                   |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_BIND_ERR            | Internal error: unable to bind socket.                                          |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_CONNECTION_ERR      | Unable to establish a TCP connection to the server. Ensure that the server      |
+    |                               | address is correctly configured, the server is listening on the expected        |
+    |                               | TCP port, and any firewall settings allow the connection. If the server         |
+    |                               | is on a different subnet, verify that the device’s network settings             |
+    |                               | (subnet mask, gateway, etc.) are properly configured.                           |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_CONNECTION_TLS_ERR  | Unable to establish a TLS connection, or the connection is rejected due to      |
+    |                               | certificate validation failure or mutual authentication issues.                 |
+    |                               | Ensure that a TLS server is running on the specified port and that the server   |
+    |                               | does not require TLS 1.3 only.                                                  |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_TRANSFER_ERR        | An error occurred while transferring data over an open network socket.          |
+    |-------------------------------|---------------------------------------------------------------------------------|
+    | ERR_CLOUD_WRONG_HTTP_CODE     | Wrong HTTP response code from the server.                                       |
+    |-------------------------------|---------------------------------------------------------------------------------|
+
+
+4.  JSON Messages examples
+
+    Examples of JSON messages can be found in the "json-examples" directory.
+
+
+5.  Code examples
+
+    The "code-examples" directory contains sample code demonstrating how to obtain values using different programming 
+    languages. The current SDK version includes a Python example only.
+
+
+6.  AState registers
+
+6.1 Current states of AState register
+
+    JSON field AState-Reg contains bits with device state at the moment when measured values were sampled. 
+    Time of sampling values may differ than time when message is transferred to server.
+
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | Bit           | Description                                                                                     |
+    |               |                                                                                                 |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit0 - bit5   | Unused                                                                                          |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit6          | Internal hardware error (1 = internal hardware error, e.g., RTC, EEPROM, or LCD).               |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit7          | Device is connected to the LAN and has obtained an IPv4 or IPv6 address (=1).                   |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit8          | Optical LED active (=1)                                                                         |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit9          | Acoustic alarm active (=1)                                                                      |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit10         | Unused                                                                                          |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit11         | RTC time may be invalid due to low voltage detected at the RTC (=1)                             |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit12         | Measurement error on one of the channels (=1)                                                   |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit13         | Configuration is not valid – configuration error detected (=1)                                  |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit14 - bit15 | Unused                                                                                          |
+    |---------------|-------------------------------------------------------------------------------------------------|
+
+
+6.2 Mask of active bits at AState
+
+    Some bits in the AState register can be deactivated in the device configuration. The table below shows these bits.
+    All other bits are unused.
+    
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | Bit           | Description                                                                                     |
+    |               |                                                                                                 |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit8          | Optical signaling is enabled in the configuration (=1)                                          |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit9          | Acoustic alarm is enabled in the configuration (=1)                                             |
+    |---------------|-------------------------------------------------------------------------------------------------|
+    | bit12         | Alarm on measurement error is enabled (=1)                                                      |
+    |---------------|-------------------------------------------------------------------------------------------------|
+

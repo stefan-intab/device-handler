@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<soap:Body>
+<InsertTx5xxCO2Sample xmlns="http://cometsystem.cz/schemas/soapTx5xxCO2.xsd">
+	<passKey>16963997</passKey>
+	<device>4158</device>
+	<temp>24.7</temp>
+	<relHum>35.9</relHum>
+	<compQuant>8.6</compQuant>
+	<co2>510</co2>
+	<alarms>hi,lo,no,no</alarms>
+	<lev1>0</lev1>
+	<lev2>0</lev2>
+	<lev3>1</lev3>
+	<compType>Dew point</compType>
+	<tempU>C</tempU>
+	<timer>10</timer>
+</InsertTx5xxCO2Sample>
+</soap:Body>
+</soap:Envelope>

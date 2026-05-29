@@ -1,0 +1,266 @@
+﻿-----------------------------------------------
+Mobile Datalogger JSON PHP Parser Documentation
+-----------------------------------------------
+
+
+
+----------
+1. Content
+----------
+
+1. Content
+2. Version history
+3. JSON structure syntax
+4. JSON structure arguments
+5. PHP Parser files
+  5.1 Classes.php
+  5.2 ULoggerJsonReceiver.php
+
+
+
+------------------
+2. Version history
+------------------
+
+JSON types:
+1 = ULogger online data JSON structure
+
+
+Following table describes this parser history:
+
+JSON | JSON    | Supported Mobile Datalogger | Changes
+Type | Version | firmware versions           | 
+-----|---------|-----------------------------|-----------------------
+
+1      1         0.0.92, 0.0.93                New parameters in JSON data:
+                                               JsonType, JsonVersion, OrderId, IsAsync, NConf, AlarmsEvalOffDueTimeLimit.
+                                               Parameter Flags renamed to AState.
+
+1      2         since 0.0.94                  ULogger sens JSON as UTF8. No changes to JSON structure.
+
+1      3         since 0.0.101                 New parameters in JSON data: BufferedModeMaxMessagesCnt, AStateMask
+
+1      4         since 0.0.116                 New parameter: RstOk, IntervalPowerMode, IntervalBatteryMode, Rssi. Delete parameter: Interval
+
+1      5         since 0.0.118                 New parameter: BatteryPercentage
+
+1      6         since 0.0.129                 New parameter: TimeNow
+
+
+------------------------
+3. JSON structure syntax
+------------------------
+
+[
+  <JsonType>
+  <JsonVersion>
+  <Rssi>
+  <TimeNow>,
+  <OrderId>
+  <IsAsync>
+  <Sn>,
+  <Desc>,
+  <Kind>,
+  <Time>,
+  <Timezone>,
+  <IntervalPowerMode>,
+  <IntervalBatteryMode>,
+  <RstOK>
+  <BufferedModeMaxMessagesCnt>
+  <AStateMask>,
+  <AState>,
+  <NConf>,
+  <AlarmsEvalOffDueTimeLimit>,
+  <CustomerUid>,
+  <BatteryPercentage>,
+  <_channels>
+]
+
+<_channels> ::= /* 1 <= length <= 8 */
+[
+  <_analogChannel> | <_binaryChannel>, ...
+]
+
+<_analogChannel> ::=
+[
+  <Number>,
+  <IsBinary>,
+  <Quantity>,
+  <Value>,
+  <Unit>
+  <DecimalPlaces>,
+  <_alarms>
+  <_alarmLimits>
+  <_alarmsBehaviors>
+]
+
+<_binaryChannel> ::=
+[
+  <Number>,
+  <IsBinary>,
+  <Quantity>,
+  <_binDescriptions>,
+  <State>
+  <_alarms>
+  <_alarmsBehaviorsBinCh>
+]
+
+<_alarms> ::=
+[
+  <Alarm1>,
+  <Alarm2>
+]
+
+<_alarmLimits> ::=
+[
+  <Alarm1Limit>,
+  <Alarm2Limit>
+]
+
+<_alarmsBehaviors> ::=
+[
+  <Alarm1Behaviour>,
+  <Alarm2Behaviour>
+]
+
+<_binDescriptions> ::=
+[
+  <BinDescription0>,
+  <BinDescription1>
+]
+
+<_alarmsBehaviorsBinCh> ::=
+[
+  <Alarm1BehaviorsBinCh>,
+  <Alarm2BehaviorsBinCh>
+]
+
+
+
+---------------------------
+4. JSON structure arguments
+---------------------------
+
+JsonType                   int     1                                   JSON structure type. 1 = ULogger online data JSON structure
+JsonVersion                int     1                                   Version of JSON structure. 1 = Current version
+Rssi                       int     0 <= x <= 99                        <rssi> Signal quality  
+                                                                           0 -113 dBm or less
+                                                                           1 -111 dBm
+                                                                           2...30 -109... -53 dBm
+                                                                           31 -51 dBm or greater
+                                                                           98 Unknown error
+                                                                           99 Not known or not detectable
+TimeNow                    string  "hex int"                           Device time at the moment of sending JSON data as count of seconds since 1.1.2000
+                                                                       e.g.: "2000-01-01 00:00:10" = "0000000A"
+OrderId                    int     0 <= x <= 255                       Message order Id (usefull for detection if someone was lost)
+IsAsync                    int     0 - false, 1 - true                 Indicates if the message was sent asynchronously (e.g. due to begin of alarm)
+Sn                         int     0 <= x <= 99999999                  Serial number
+Desc                       string  length <= 32                        Device description
+Kind                       int     0 <= x <= 255                       Device kind
+Time                       string  "hex int"                           Device time as count of seconds since 1.1.2000
+                                                                       e.g.: "2000-01-01 00:00:10" = "0000000A"
+Timezone                   int     -128 <= x <= 127                    UTC offset (-12h..+14h) multiples of 15 minutes; 0x80 - not used
+IntervalPowerMode          int     0 <= x <= 604800                    Sending interval (in seconds) when power mode. Use AState.ExternalPowerPresent for distinguish.
+IntervalBatteryMode        int     0 <= x <= 604800                    Sending interval (in seconds) when battery mode. Use AState.ExternalPowerPresent for distinguish.
+RstOk                      int     0 - false, 1 - true                 Indicates if the message is the first after device start, reset and reconfiguration
+BufferedModeMaxMessagesCnt int     0 <= x <= 255                       Max messages count in buffer when buffered mode enabled. When not, value is <= 1.
+AStateMask                 int     0 <= x <= 65535                     Mask of evaluated alarm flags in AState
+AState                     int     0 <= x <= 65535                     AState - state word (see details at the bottom)
+NConf                      int     0 <= x <= 255                       Current configuration number from device. Its change reflects change of configuration.
+AlarmsEvalOffDueTimeLimit  int     0 - false, 1 - true                 Alarms are not evaluated now, because of Time limited evaluation.
+                                                                       When true, then evaluation of alarms is not currently performed.
+CustomerUid                string  length <= 16                        Klič pro identifikaci zakaznika v Cloudu
+BatteryPercentage          int     0 <= x <= 100                       Battery capacity in percent
+Number                     int     1 <= x <= 8                         Channel number (must be unique within the array)
+IsBinary                   int     0 - false, 1 - true                 Current array represents _binaryChannel (else _analogChannel)
+Quantity                   string  length <= 16                        Channel quantity
+Value                      string  "hex float"                         Measured Value (0xFF8100NN means ERROR (byte)0xNN)
+Unit                       string  length <= 8                         Unit
+DecimalPlaces              int,    0 <= x <= 10                        Number of decimal places
+Alarm1                     int     0 - false, 1 - true                 Alarm 1 state
+Alarm2                     int     0 - false, 1 - true                 Alarm 2 state
+Alarm1Limit                string  "hex float"                         Alarm 1 configured limit
+Alarm2Limit                string  "hex float"                         Alarm 2 configured limit
+Alarm1Behaviour            int     0 - disabled                        Alarm 1 configured behaviour
+                                   1 - lower then limit
+                                   2 - higher then limit
+Alarm2Behaviour            int     -""-                                Alarm 2 configured behavior
+BinDescription0            string  length <= 16                        Binary state 0 description
+BinDescription1            string  length <= 16                        Binary state 1 description
+Alarm1BehaviorsBinCh       int     0 - disabled                        Alarm 1 configured behaviour
+                                   1 - alarm on low state
+                                   2 - alarm on high state
+Alarm2BehaviorsBinCh       int     -""-                                Alarm 2 configured behaviour
+
+
+AState description:
+------------------
+BinaryIn1 = 0,
+BinaryIn2 = 1,
+BinaryIn3 = 2,
+BinaryIn4 = 3,
+AcousticAlarmActive = 4,
+OutRS232SignalActive = 5,
+ExternalPowerPresent = 6,
+RecordingActive = 7,
+EmptyBattery = 8,
+LowBattery = 9,
+ExternalPowerError = 10,
+MeasurementError = 11,
+ConfigurationError = 12,
+MemoryLimitExceeded = 13,
+MemoryFull = 14,
+OpticalAlarmActive = 15
+
+
+
+-------------------
+5. PHP Parser files
+-------------------
+
+
+
+---------------
+5.1 Classes.php
+---------------
+
+contains declaration of data classes and Helper class DeviceHelper. 
+Use DeviceHelper::Parse(...) to parse HTTP Request POST data from Mobile Datalogger into data classes.
+
+DeviceHelper class
+------------------
+function DeviceHelper::Parse($input) 
+  Converts Mobile Datalogger JSON data into Device object.
+
+function DeviceHelper::ToString(Device $deviceObj)
+  Prints info about Device object.
+
+Data classes
+------------
+
+abstract class MessageInfo 
+  - base class, contains JSON type and JSON version
+
+class Device extends MessageInfo 
+  - contains information about device
+  - contains property Channels - array of channels object
+
+abstract class Channel
+  - base class for channel
+
+class AnalogChannel extends Channel
+
+class BinaryChannel extends Channel
+
+
+
+---------------------------
+5.2 ULoggerJsonReceiver.php
+---------------------------
+
+Example script of Mobile Datalogger JSON data receiver.
+For parsing JSON data it uses classes.php.
+It outputs data dump / errors into output.txt in the same folder.
+Better desribed in the top of this file.
+
+

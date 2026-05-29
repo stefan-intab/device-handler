@@ -1,0 +1,62 @@
+--------------------------------------------------------------------------------
+ Description of SOAP XML from Tx5xx/Tx6xx (T5540, T6540, T5541, T6541, T6640,
+                                           T5640  T5545, T6545, T5641, T6641)
+
+ structure of SOAP message is described at XSD schema
+
+ v1.1 for firmware 1-5-7.4 and 1-5-7.5, 2017-11-24
+--------------------------------------------------------------------------------
+
+
+|----------------|-------------------------------------------------------------|
+| Tag            | Description                                                 |
+|----------------|-------------------------------------------------------------|
+| <passKey>      | Device serial number (an eight digit number)                |
+|----------------|-------------------------------------------------------------|
+| <device>       | Device model identification number:                         |
+|                |--------------|----------------------------------------------|
+|                | Number       | Device                                       |
+|                |--------------|----------------------------------------------|
+|                | 4155         | T5540                                        |
+|                | 4158         | T6540                                        |
+|                | 4161         | T5541                                        |
+|                | 4164         | T6541                                        |
+|                | 4179         | T6640                                        |
+|                | 4180         | T5640                                        |
+|                | 4191         | T5545                                        |
+|                | 4194         | T6545                                        |
+|                | 4199         | T5641                                        |
+|                | 4200         | T6641                                        |
+|----------------|--------------|----------------------------------------------|
+| <temp>         | Value of temperature (as decimal place separator is used    |
+|                | dot sign). Error signalised by number 9999 or -9999.        |
+|----------------|-------------------------------------------------------------|
+| <relHum>       | Relative humidity. Error value 9999 or -9999.               |
+|----------------|-------------------------------------------------------------|
+| <compQuant>    | Computed value/quantity. Error value 9999 or -9999.         |
+|----------------|-------------------------------------------------------------|
+| <co2>          | CO2 level. Error value -9998 or -9999. Error value -9998 is |
+|                | approximately 10 sec after device startup till proper       |
+|                | measured value is not available.                            |
+|----------------|-------------------------------------------------------------|
+| <alarms>       | State of alarms at measurement channels 1-4. Values:        |
+|                | no - alarm is not active                                    |
+|                | lo - low alarm is active                                    |
+|                | hi - high alarm is active                                   |
+|                | Example: no,hi,no,no - high alarm on relative humidity      |
+|----------------|-------------------------------------------------------------|
+| <lev1>         | State of Green CO2 LED.                                     |
+|----------------|-------------------------------------------------------------|
+| <lev2>         | State of Yellow CO2 LED.                                    |
+|----------------|-------------------------------------------------------------|
+| <lev3>         | State of Red CO2 LED.                                       |
+|----------------|-------------------------------------------------------------|
+| <compType>     | Computed value/quantity. Values: Absolute humidity,         |
+|                | Specific humidity, Mixing proportion, Specific enthalpy,    |
+|                | Dew point, n/a                                              |
+|----------------|-------------------------------------------------------------|
+| <tempU>        | Temperature and Dew point unit. Values: C, F, n/a           |
+|----------------|-------------------------------------------------------------|
+| <timer>        | SOAP sending interval in [sec].                             |
+|----------------|-------------------------------------------------------------|
+
